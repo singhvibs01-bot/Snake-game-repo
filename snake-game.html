@@ -227,7 +227,7 @@
         const state = {
             snake: [],
             direction: { x: 1, y: 0 },
-            nextDirection: { x: 1, y: 0 },
+            pendingDirection: { x: 1, y: 0 },
             food: { x: 0, y: 0 },
             score: 0,
             bestScore: Number(localStorage.getItem('snakeBestScore') || 0),
@@ -307,7 +307,7 @@
                 { x: 5, y: 7 }
             ];
             state.direction = { x: 1, y: 0 };
-            state.nextDirection = { x: 1, y: 0 };
+            state.pendingDirection = { x: 1, y: 0 };
             state.score = 0;
             updateScore();
             placeFood();
@@ -361,14 +361,12 @@
         }
 
         function tick() {
-            const newDirection = state.nextDirection;
-            const currentDirection = state.direction;
-            const isReverseMove = newDirection.x === -currentDirection.x && newDirection.y === -currentDirection.y;
-
-            if (isReverseMove) {
-                state.nextDirection = currentDirection;
-            } else {
-                state.direction = newDirection;
+            if (state.pendingDirection) {
+                const proposed = state.pendingDirection;
+                const isOpposite = proposed.x === -state.direction.x && proposed.y === -state.direction.y;
+                if (!isOpposite) {
+                    state.direction = proposed;
+                }
             }
 
             const head = {
@@ -420,7 +418,7 @@
             const isOpposite = newDirection.x === -state.direction.x && newDirection.y === -state.direction.y;
             if (isOpposite) return;
 
-            state.nextDirection = newDirection;
+            state.pendingDirection = newDirection;
 
             if (!state.isRunning && event.key === 'Enter') {
                 startGame();
@@ -428,8 +426,8 @@
         }
 
         startBtn.addEventListener('click', startGame);
-pauseBtn.addEventListener('click', togglePause);
-document.addEventListener('keydown', handleKeydown);
+        pauseBtn.addEventListener('click', togglePause);
+        document.addEventListener('keydown', handleKeydown);
 
         updateBestScore();
         updateScore();

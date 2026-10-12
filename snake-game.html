@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #111827;
+            --panel-alt: #1f2937;
+            --board-bg: #0b1220;
+            --snake: #34d399;
+            --snake-head: #10b981;
+            --food: #f87171;
+            --text: #e5e7eb;
+            --muted: #9ca3af;
+            --accent: #60a5fa;
+            --button: #2563eb;
+            --button-hover: #1d4ed8;
+            --danger: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #020817, var(--bg));
+            color: var(--text);
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 20px;
+        }
+
+        .app {
+            width: min(92vw, 560px);
+            background: rgba(17, 24, 39, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+        }
+
+        h1 {
+            margin: 0 0 16px;
+            text-align: center;
+            font-size: clamp(2rem, 3vw, 2.8rem);
+        }
+
+        .scoreboard {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            flex: 1;
+            min-width: 100px;
+            background: var(--panel-alt);
+            border-radius: 12px;
+            padding: 10px 12px;
+            text-align: center;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+        }
+
+        .stat-label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: var(--button);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        button:hover {
+            background: var(--button-hover);
+            transform: translateY(-1px);
+        }
+
+        button.secondary {
+            background: #374151;
+        }
+
+        button.secondary:hover {
+            background: #4b5563;
+        }
+
+        .board-wrap {
+            background: var(--board-bg);
+            border-radius: 14px;
+            padding: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(15, minmax(0, 1fr));
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #0b1220;
+        }
+
+        .cell {
+            background: rgba(148, 163, 184, 0.05);
+            border: 1px solid rgba(148, 163, 184, 0.06);
+        }
+
+        .cell.snake {
+            background: var(--snake);
+            border-radius: 3px;
+        }
+
+        .cell.snake-head {
+            background: var(--snake-head);
+        }
+
+        .cell.food {
+            background: var(--food);
+            border-radius: 50%;
+        }
+
+        .message {
+            margin-top: 16px;
+            min-height: 24px;
+            text-align: center;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        @media (max-width: 500px) {
+            .app {
+                padding: 16px;
+            }
+
+            .scoreboard {
+                gap: 8px;
+            }
+
+            .stat {
+                min-width: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <h1>Snake</h1>
+
+        <div class="scoreboard">
+            <div class="stat">
+                <span class="stat-label">Score</span>
+                <span id="score" class="stat-value">0</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Best</span>
+                <span id="best-score" class="stat-value">0</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="start-btn">Start Game</button>
+            <button id="pause-btn" class="secondary">Pause</button>
+        </div>
+
+        <div class="board-wrap">
+            <div id="game-board" aria-label="Snake game board"></div>
+        </div>
+
+        <div id="message" class="message">Press Start to play</div>
+    </div>
+
+    <script>
+        const boardSize = 15;
+        const board = document.getElementById('game-board');
+        const scoreEl = document.getElementById('score');
+        const bestScoreEl = document.getElementById('best-score');
+        const messageEl = document.getElementById('message');
+        const startBtn = document.getElementById('start-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+
+        const cells = [];
+        const directions = {
+            ArrowUp: { x: 0, y: -1 },
+            ArrowDown: { x: 0, y: 1 },
+            ArrowLeft: { x: -1, y: 0 },
+            ArrowRight: { x: 1, y: 0 },
+            w: { x: 0, y: -1 },
+            s: { x: 0, y: 1 },
+            a: { x: -1, y: 0 },
+            d: { x: 1, y: 0 }
+        };
+
+        const state = {
+            snake: [],
+            direction: { x: 1, y: 0 },
+            nextDirection: { x: 1, y: 0 },
+            food: { x: 0, y: 0 },
+            score: 0,
+            bestScore: Number(localStorage.getItem('snakeBestScore') || 0),
+            gameLoop: null,
+            isRunning: false,
+            isPaused: false
+        };
+
+        function createBoard() {
+            board.innerHTML = '';
+            cells.length = 0;
+
+            for (let index = 0; index < boardSize * boardSize; index++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                board.appendChild(cell);
+                cells.push(cell);
+            }
+        }
+
+        function updateBestScore() {
+            bestScoreEl.textContent = state.bestScore;
+        }
+
+        function updateScore() {
+            scoreEl.textContent = state.score;
+        }
+
+        function placeFood() {
+            const freeCells = [];
+
+            for (let y = 0; y < boardSize; y++) {
+                for (let x = 0; x < boardSize; x++) {
+                    const occupied = state.snake.some(segment => segment.x === x && segment.y === y);
+                    if (!occupied) {
+                        freeCells.push({ x, y });
+                    }
+                }
+            }
+
+            if (freeCells.length === 0) {
+                state.food = { x: -1, y: -1 };
+                return;
+            }
+
+            const randomIndex = Math.floor(Math.random() * freeCells.length);
+            state.food = freeCells[randomIndex];
+        }
+
+        function drawBoard() {
+            cells.forEach(cell => {
+                cell.classList.remove('snake', 'snake-head', 'food');
+            });
+
+            state.snake.forEach((segment, index) => {
+                const cellIndex = segment.y * boardSize + segment.x;
+                if (cells[cellIndex]) {
+                    cells[cellIndex].classList.add('snake');
+                    if (index === 0) {
+                        cells[cellIndex].classList.add('snake-head');
+                    }
+                }
+            });
+
+            if (state.food.x >= 0 && state.food.y >= 0) {
+                const foodCellIndex = state.food.y * boardSize + state.food.x;
+                if (cells[foodCellIndex]) {
+                    cells[foodCellIndex].classList.add('food');
+                }
+            }
+        }
+
+        function resetGame() {
+            state.snake = [
+                { x: 7, y: 7 },
+                { x: 6, y: 7 },
+                { x: 5, y: 7 }
+            ];
+            state.direction = { x: 1, y: 0 };
+            state.nextDirection = { x: 1, y: 0 };
+            state.score = 0;
+            updateScore();
+            placeFood();
+            drawBoard();
+        }
+
+        function getSpeed() {
+            return Math.max(70, 180 - state.score * 5);
+        }
+
+        function stopLoop() {
+            if (state.gameLoop) {
+                clearInterval(state.gameLoop);
+                state.gameLoop = null;
+            }
+        }
+
+        function endGame(message) {
+            stopLoop();
+            state.isRunning = false;
+            state.isPaused = false;
+            pauseBtn.textContent = 'Pause';
+            messageEl.textContent = `${message} Press Start to play again.`;
+        }
+
+        function startGame() {
+            stopLoop();
+            resetGame();
+            state.isRunning = true;
+            state.isPaused = false;
+            pauseBtn.textContent = 'Pause';
+            messageEl.textContent = 'Game running';
+            state.gameLoop = setInterval(tick, getSpeed());
+        }
+
+        function togglePause() {
+            if (!state.isRunning) return;
+
+            if (state.isPaused) {
+                state.isPaused = false;
+                pauseBtn.textContent = 'Pause';
+                messageEl.textContent = 'Game running';
+                state.gameLoop = setInterval(tick, getSpeed());
+                return;
+            }
+
+            state.isPaused = true;
+            pauseBtn.textContent = 'Resume';
+            messageEl.textContent = 'Paused';
+            stopLoop();
+        }
+
+        function tick() {
+            const newDirection = state.nextDirection;
+            const currentDirection = state.direction;
+            const isReverseMove = newDirection.x === -currentDirection.x && newDirection.y === -currentDirection.y;
+
+            if (isReverseMove) {
+                state.nextDirection = currentDirection;
+            } else {
+                state.direction = newDirection;
+            }
+
+            const head = {
+                x: state.snake[0].x + state.direction.x,
+                y: state.snake[0].y + state.direction.y
+            };
+
+            const nextSnake = [head, ...state.snake];
+            const isEating = head.x === state.food.x && head.y === state.food.y;
+
+            if (!isEating) {
+                nextSnake.pop();
+            }
+
+            const wallCollision = head.x < 0 || head.x >= boardSize || head.y < 0 || head.y >= boardSize;
+            const bodyCollision = nextSnake.slice(1).some(segment => segment.x === head.x && segment.y === head.y);
+
+            if (wallCollision || bodyCollision) {
+                endGame('Game Over!');
+                return;
+            }
+
+            state.snake = nextSnake;
+
+            if (isEating) {
+                state.score += 10;
+                updateScore();
+
+                if (state.score > state.bestScore) {
+                    state.bestScore = state.score;
+                    localStorage.setItem('snakeBestScore', String(state.bestScore));
+                    updateBestScore();
+                }
+
+                placeFood();
+                stopLoop();
+                state.gameLoop = setInterval(tick, getSpeed());
+            }
+
+            drawBoard();
+        }
+
+        function handleKeydown(event) {
+            const key = event.key.toLowerCase();
+            const newDirection = directions[key] || directions[event.key];
+
+            if (!newDirection) return;
+
+            const isOpposite = newDirection.x === -state.direction.x && newDirection.y === -state.direction.y;
+            if (isOpposite) return;
+
+            state.nextDirection = newDirection;
+
+            if (!state.isRunning && event.key === 'Enter') {
+                startGame();
+            }
+        }
+
+        startBtn.addEventListener('click', startGame);
+pauseBtn.addEventListener('click', togglePause);
+document.addEventListener('keydown', handleKeydown);
+
+        updateBestScore();
+        updateScore();
+        createBoard();
+        resetGame();
+    </script>
+</body>
+</html>

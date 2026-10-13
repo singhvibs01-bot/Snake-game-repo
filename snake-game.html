@@ -92,6 +92,12 @@
             flex-wrap: wrap;
         }
 
+        .utility-controls {
+            display: flex;
+            justify-content: flex-end;
+            margin: -6px 0 10px;
+        }
+
         button {
             background: var(--button);
             color: white;
@@ -117,7 +123,22 @@
             background: #4b5563;
         }
 
+        .sound-btn {
+            background: transparent;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: var(--muted);
+            padding: 7px 10px;
+            font-size: 0.85rem;
+        }
+
+        .sound-btn:hover,
+        .sound-btn[aria-pressed="true"] {
+            background: var(--panel-alt);
+            color: var(--text);
+        }
+
         .board-wrap {
+            position: relative;
             background: var(--board-bg);
             border-radius: 14px;
             padding: 10px;
@@ -153,6 +174,95 @@
             border-radius: 50%;
         }
 
+        .board-overlay {
+            position: absolute;
+            inset: 10px;
+            z-index: 1;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            border-radius: 10px;
+            background: rgba(3, 10, 22, 0.84);
+            text-align: center;
+            backdrop-filter: blur(3px);
+        }
+
+        .board-overlay[hidden] {
+            display: none;
+        }
+
+        .overlay-content {
+            max-width: 280px;
+            animation: appear 240ms ease-out both;
+        }
+
+        .overlay-kicker {
+            margin: 0 0 8px;
+            color: var(--snake);
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .overlay-title {
+            margin: 0;
+            font-size: 2rem;
+        }
+
+        .overlay-copy {
+            margin: 10px 0 18px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .touch-controls {
+            display: none;
+            grid-template-columns: repeat(3, 54px);
+            grid-template-rows: repeat(2, 48px);
+            justify-content: center;
+            gap: 6px;
+            margin: 14px auto 0;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .touch-controls button {
+            padding: 0;
+            font-size: 1.35rem;
+            background: #26364a;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .touch-controls button:active {
+            background: var(--button);
+            transform: scale(0.96);
+        }
+
+        .touch-up {
+            grid-column: 2;
+        }
+
+        .touch-left {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .touch-down {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .touch-right {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        @keyframes appear {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .message {
             margin-top: 16px;
             min-height: 24px;
@@ -172,6 +282,10 @@
 
             .stat {
                 min-width: 80px;
+            }
+
+            .touch-controls {
+                display: grid;
             }
         }
     </style>
@@ -196,11 +310,30 @@
             <button id="pause-btn" class="secondary">Pause</button>
         </div>
 
-        <div class="board-wrap">
-            <div id="game-board" aria-label="Snake game board"></div>
+        <div class="utility-controls">
+            <button id="sound-btn" class="sound-btn" type="button" aria-pressed="true" aria-label="Turn sound off">Sound on</button>
         </div>
 
-        <div id="message" class="message">Press Start to play</div>
+        <div class="board-wrap">
+            <div id="game-board" aria-label="Snake game board"></div>
+            <div id="board-overlay" class="board-overlay">
+                <div class="overlay-content">
+                    <p id="overlay-kicker" class="overlay-kicker">Classic arcade</p>
+                    <h2 id="overlay-title" class="overlay-title">Ready to run?</h2>
+                    <p id="overlay-copy" class="overlay-copy">Collect the fruit, grow your snake, and avoid the walls.</p>
+                    <button id="overlay-btn" type="button">Start game</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="touch-controls" aria-label="Touch direction controls">
+            <button class="touch-up" type="button" data-direction="ArrowUp" aria-label="Move up">↑</button>
+            <button class="touch-left" type="button" data-direction="ArrowLeft" aria-label="Move left">←</button>
+            <button class="touch-down" type="button" data-direction="ArrowDown" aria-label="Move down">↓</button>
+            <button class="touch-right" type="button" data-direction="ArrowRight" aria-label="Move right">→</button>
+        </div>
+
+        <div id="message" class="message" aria-live="polite">Press Start to play</div>
     </div>
 
     <script>
@@ -211,6 +344,13 @@
         const messageEl = document.getElementById('message');
         const startBtn = document.getElementById('start-btn');
         const pauseBtn = document.getElementById('pause-btn');
+        const soundBtn = document.getElementById('sound-btn');
+        const overlay = document.getElementById('board-overlay');
+        const overlayKicker = document.getElementById('overlay-kicker');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayCopy = document.getElementById('overlay-copy');
+        const overlayBtn = document.getElementById('overlay-btn');
+        const touchButtons = document.querySelectorAll('[data-direction]');
 
         const cells = [];
         const directions = {
@@ -235,6 +375,43 @@
             isRunning: false,
             isPaused: false
         };
+
+        let audioContext = null;
+        let soundEnabled = localStorage.getItem('snakeSoundEnabled') !== 'false';
+
+        function playTone(frequency, duration = 0.09, type = 'sine') {
+            if (!soundEnabled) return;
+
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) return;
+
+            audioContext ||= new AudioContextClass();
+            if (audioContext.state === 'suspended') audioContext.resume();
+
+            const oscillator = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            oscillator.type = type;
+            oscillator.frequency.value = frequency;
+            gain.gain.setValueAtTime(0.08, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+            oscillator.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        function showOverlay(kicker, title, copy, buttonLabel, action) {
+            overlayKicker.textContent = kicker;
+            overlayTitle.textContent = title;
+            overlayCopy.textContent = copy;
+            overlayBtn.textContent = buttonLabel;
+            overlayBtn.onclick = action;
+            overlay.hidden = false;
+        }
+
+        function hideOverlay() {
+            overlay.hidden = true;
+        }
 
         function createBoard() {
             board.innerHTML = '';
@@ -331,6 +508,8 @@
             state.isPaused = false;
             pauseBtn.textContent = 'Pause';
             messageEl.textContent = `${message} Press Start to play again.`;
+            playTone(180, 0.3, 'triangle');
+            showOverlay('Round complete', 'Game over', `You scored ${state.score}. Ready for another run?`, 'Play again', startGame);
         }
 
         function startGame() {
@@ -340,6 +519,8 @@
             state.isPaused = false;
             pauseBtn.textContent = 'Pause';
             messageEl.textContent = 'Game running';
+            hideOverlay();
+            playTone(520, 0.1);
             state.gameLoop = setInterval(tick, getSpeed());
         }
 
@@ -350,6 +531,8 @@
                 state.isPaused = false;
                 pauseBtn.textContent = 'Pause';
                 messageEl.textContent = 'Game running';
+                hideOverlay();
+                playTone(520, 0.1);
                 state.gameLoop = setInterval(tick, getSpeed());
                 return;
             }
@@ -358,7 +541,10 @@
             pauseBtn.textContent = 'Resume';
             messageEl.textContent = 'Paused';
             stopLoop();
+            showOverlay('Take a breath', 'Game paused', 'Your run is waiting right here.', 'Resume', togglePause);
         }
+
+        overlayBtn.onclick = startGame;
 
         function tick() {
             if (state.pendingDirection) {
@@ -394,6 +580,7 @@
             if (isEating) {
                 state.score += 10;
                 updateScore();
+                playTone(760, 0.12, 'triangle');
 
                 if (state.score > state.bestScore) {
                     state.bestScore = state.score;
@@ -409,30 +596,58 @@
             drawBoard();
         }
 
-        function handleKeydown(event) {
-            const key = event.key.toLowerCase();
-            const newDirection = directions[key] || directions[event.key];
+        function changeDirection(key) {
+            const newDirection = directions[key.toLowerCase()] || directions[key];
 
-            if (!newDirection) return;
+            if (!newDirection || !state.isRunning || state.isPaused) return;
 
             const isOpposite = newDirection.x === -state.direction.x && newDirection.y === -state.direction.y;
             if (isOpposite) return;
 
             state.pendingDirection = newDirection;
+        }
 
-            if (!state.isRunning && event.key === 'Enter') {
-                startGame();
+        function handleKeydown(event) {
+            const key = event.key.toLowerCase();
+            const newDirection = directions[key] || directions[event.key];
+
+            if (newDirection) {
+                event.preventDefault();
+                changeDirection(event.key);
+                return;
+            }
+
+            if (event.key === ' ' && state.isRunning) {
+                event.preventDefault();
+                togglePause();
             }
         }
 
         startBtn.addEventListener('click', startGame);
         pauseBtn.addEventListener('click', togglePause);
+        soundBtn.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            localStorage.setItem('snakeSoundEnabled', String(soundEnabled));
+            soundBtn.textContent = soundEnabled ? 'Sound on' : 'Sound off';
+            soundBtn.setAttribute('aria-pressed', String(soundEnabled));
+            soundBtn.setAttribute('aria-label', soundEnabled ? 'Turn sound off' : 'Turn sound on');
+            if (soundEnabled) playTone(640, 0.1);
+        });
+        touchButtons.forEach(button => {
+            button.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                changeDirection(button.dataset.direction);
+            });
+        });
         document.addEventListener('keydown', handleKeydown);
 
         updateBestScore();
         updateScore();
         createBoard();
         resetGame();
+        soundBtn.textContent = soundEnabled ? 'Sound on' : 'Sound off';
+        soundBtn.setAttribute('aria-pressed', String(soundEnabled));
+        soundBtn.setAttribute('aria-label', soundEnabled ? 'Turn sound off' : 'Turn sound on');
     </script>
 </body>
 </html>
